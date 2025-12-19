@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Детектор защитных касок</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-hard-hat"></i> Детектор защитных касок</h1>
+            <p class="subtitle">Загрузите фотографию для автоматического обнаружения защитных касок</p>
+        </header>
+
+        <main>
+            <div class="upload-area" id="drop-area">
+                <form id="upload-form" enctype="multipart/form-data">
+                    <input type="file" id="file-input" accept="image/*" hidden>
+                    <div class="upload-icon">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                    </div>
+                    <h3>Перетащите фото сюда или кликните для выбора</h3>
+                    <p>Поддерживаемые форматы: JPG, PNG, JPEG</p>
+                    <button type="button" class="btn-select" onclick="document.getElementById('file-input').click()">
+                        Выбрать файл
+                    </button>
+                </form>
+            </div>
+
+            <div class="results-container">
+                <div class="result-section">
+                    <h3><i class="fas fa-image"></i> Оригинальное фото</h3>
+                    <div class="image-container">
+                        <img id="original-img" src="" alt="Оригинальное изображение">
+                    </div>
+                </div>
+
+                <div class="result-section">
+                    <h3><i class="fas fa-search"></i> Результат детекции</h3>
+                    <div class="image-container">
+                        <img id="result-img" src="" alt="Результат детекции">
+                    </div>
+                    <div class="stats">
+                        <div class="stat-item">
+                            <i class="fas fa-hard-hat"></i>
+                            <span>Найдено касок: <strong id="helmet-count">0</strong></span>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Статус: <strong id="status">Ожидание загрузки</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="info-box">
+                <h3><i class="fas fa-info-circle"></i> Информация</h3>
+                <ul>
+                    <li>Модель обучена на базе YOLOv5</li>
+                    <li>Обнаруженные каски выделяются зелеными рамками</li>
+                    <li>Каждая рамка сопровождается оценкой точности</li>
+                    <li>Для корректной работы используйте четкие фотографии</li>
+                </ul>
+            </div>
+        </main>
+
+        <footer>
+            <p>Система автоматического обнаружения защитных касок</p>
+        </footer>
+    </div>
+
+    <script>
+        const dropArea = document.getElementById('drop-area');
+        const fileInput = document.getElementById('file-input');
+        const uploadForm = document.getElementById('upload-form');
+        const originalImg = document.getElementById('original-img');
+        const resultImg = document.getElementById('result-img');
+        const helmetCount = document.getElementById('helmet-count');
+        const statusElement = document.getElementById('status');
+
+        // Обработка перетаскивания файлов
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight() {
+            dropArea.classList.add('highlight');
+        }
+
+        function unhighlight() {
+            dropArea.classList.remove('highlight');
+        }
+
+        // Обработка сброса файла
+        dropArea.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        // Обработка выбора файла
+        fileInput.addEventListener('change', function() {
+            handleFiles(this.files);
+        });
+
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            
+            const file = files[0];
+            if (!file.type.match('image.*')) {
+                alert('Пожалуйста, загрузите изображение!');
+                return;
+            }
+
+            // Показать оригинальное изображение
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                originalImg.src = e.target.result;
+                originalImg.style.display = 'block';
+                resultImg.style.display = 'none';
+                statusElement.textContent = 'Обработка...';
+                statusElement.style.color = '#ff9800';
+            };
+            reader.readAsDataURL(file);
+
+            // Отправить на сервер
+            uploadFile(file);
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    resultImg.src = data.result_url + '?t=' + new Date().getTime();
+                    resultImg.style.display = 'block';
+                    helmetCount.textContent = data.helmet_count;
+                    statusElement.textContent = 'Обработка завершена';
+                    statusElement.style.color = '#4CAF50';
+                } else {
+                    statusElement.textContent = 'Ошибка: ' + data.error;
+                    statusElement.style.color = '#f44336';
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                statusElement.textContent = 'Ошибка при загрузке';
+                statusElement.style.color = '#f44336';
+            });
+        }
+    </script>
+</body>
+</html>
